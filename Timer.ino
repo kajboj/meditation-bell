@@ -18,16 +18,16 @@ typedef struct {
 } Tick;
 
 Tick allTicks[] = {
-  { 1000,     256 },
-  { 2000,     128 },
-  { 3000,      64 },
-  { 4000,      32 },
-  { 5000,      16 },
-  { 6000,       8 },
-  { 7000,       4 },
-  { 8000,       2 },
-  { 9000,       1 },
-  { ULONG_MAX,  0 },
+  { 1000,     256 / 2},
+  { 2000,     128 / 2},
+  { 3000,      64 / 2},
+  { 4000,      32 / 2},
+  { 5000,      16 / 2},
+  { 6000,       8 / 2},
+  { 7000,       4 / 2},
+  { 8000,       2 / 2},
+  { 9000,       1 / 2},
+  { ULONG_MAX,  0 / 2},
 };
 
 static const int allTickCount = sizeof(allTicks)/sizeof(Tick);
@@ -35,7 +35,6 @@ static const int allTickCount = sizeof(allTicks)/sizeof(Tick);
 typedef int KeyEvent;
 static const KeyEvent NOTHING_HAPPENED = 0;
 static const KeyEvent JUST_PRESSED     = 1;
-static const KeyEvent JUST_RELEASED    = 2;
 
 typedef int KeyState;
 static const KeyState PRESSED  = HIGH;
@@ -43,6 +42,7 @@ static const KeyState RELEASED = LOW;
 
 typedef struct {
   int pin;
+  Seconds (*newRemaining)(Seconds);
   Millis lastDebounceTime;
   KeyState previousState;
   KeyState state;
@@ -51,9 +51,28 @@ typedef struct {
   Millis lastPressTime;
 } Key;
 
+Seconds newRemainingUp(Seconds remainingSec) {
+  Seconds newRemaining = remainingSec + 60 - remainingSec % 60;
+  if (newRemaining > MAXIMUM_SEC) {
+    return 0;
+  } else {
+    return newRemaining;
+  }
+}
+
+Seconds newRemainingDown(Seconds remainingSec) {
+  Seconds step = remainingSec % 60;
+  step = ((step == 0) ? 60 : step);
+  if (step > remainingSec) {
+    return MAXIMUM_SEC;
+  } else {
+    return remainingSec - step;
+  }
+}
+
 Key allKeys[] = {
-  { 5 },
-  { 6 },
+  { 5, &newRemainingUp },
+  { 6, &newRemainingDown },
 };
 
 static const int allKeyCount = sizeof(allKeys)/sizeof(Key);
@@ -74,15 +93,15 @@ void displayTime(Seconds sec) {
   display.showNumberDec(sec % 60, true, 2, 2);
 }
 
-void resetTimer(Seconds remaining) {
-  startMillis = millis();
+void resetTimer(Seconds remaining, Millis time) {
+  startMillis = time;
   previousSec = 0;
   remainingSec = remaining;
   displayTime(remainingSec);
 }
 
 void updateTimer(Millis time) {
-  if (remainingSec != 0) {
+  if (remainingSec > 0) {
     Seconds sec = getSec(time - startMillis);
 
     if (sec != previousSec) {
@@ -93,7 +112,7 @@ void updateTimer(Millis time) {
   }
 }
 
-void updateKeyEvents() {
+void updateKeyEvents(Millis time) {
   for(int i=0; i<allKeyCount; i++) {
     Key *key = &allKeys[i];
     key->event = NOTHING_HAPPENED;
@@ -101,17 +120,13 @@ void updateKeyEvents() {
     int reading = digitalRead(key->pin);
 
     if (reading != key->previousState) {
-      key->lastDebounceTime = millis();
+      key->lastDebounceTime = time;
     }
 
-    if ((millis() - key->lastDebounceTime) > DEBOUNCE_DELAY) {
+    if ((time - key->lastDebounceTime) > DEBOUNCE_DELAY) {
       if (reading != key->state) {
         if ((reading == PRESSED) && (key->state == RELEASED)) {
           key->event = JUST_PRESSED;
-        }
-
-        if ((reading == RELEASED) && (key->state == PRESSED)) {
-          key->event = JUST_RELEASED;
         }
 
         key->state = reading;
@@ -142,20 +157,8 @@ Millis findTickDelay(Millis timeSinceLastPress) {
   }
 }
 
-Seconds newRemaining(Seconds remainingSec) {
-  return remainingSec + 60 - remainingSec % 60;
-}
-
 void makeTick(Millis time, Seconds (*newRemaining)(Seconds)) {
-  upKey->lastTick = time;
-  Seconds newRemainingSec = newRemaining(remainingSec);
-  if (newRemainingSec > MAXIMUM_SEC) {
-    newRemainingSec = MAXIMUM_SEC;
-  } else if (newRemainingSec < 0) {
-    newRemainingSec = 0;
-  }
-
-  resetTimer(newRemainingSec);
+  resetTimer(newRemaining(remainingSec), time);
 }
 
 boolean isPressed(Key *key) {
@@ -165,21 +168,26 @@ boolean isPressed(Key *key) {
 void setup() {
   display.setBrightness(0x08);
   initializeKeys();
-  resetTimer(0);
+  resetTimer(0, millis());
 }
 
 void loop() {
-  updateKeyEvents();
   Millis time = millis();
+  updateKeyEvents(time);
 
-  if (upKey->event == JUST_PRESSED) {
-    upKey->lastPressTime = time;
-    makeTick(time, newRemaining);
-  } else {
-    if (isPressed(upKey)) {
-      Millis tickDelay = findTickDelay(time - upKey->lastPressTime);
-      if (time - upKey->lastTick >= tickDelay) {
-        makeTick(time, newRemaining);
+  for(int i=0; i<allKeyCount; i++) {
+    Key *key = &allKeys[i];
+    if (key->event == JUST_PRESSED) {
+      key->lastPressTime = time;
+      key->lastTick = time;
+      makeTick(time, key->newRemaining);
+    } else {
+      if (isPressed(key)) {
+        Millis tickDelay = findTickDelay(time - key->lastPressTime);
+        if (time - key->lastTick >= tickDelay) {
+          key->lastTick = time;
+          makeTick(time, key->newRemaining);
+        }
       }
     }
   }
