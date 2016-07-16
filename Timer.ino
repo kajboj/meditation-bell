@@ -6,6 +6,8 @@
 #define ULONG_MAX 4294967295
 TM1637Display display(CLK, DIO);
 
+static const int BELL_PIN = 2;
+
 typedef unsigned long Millis;
 typedef unsigned long Seconds;
 
@@ -93,7 +95,7 @@ void resetTimer(Seconds remaining, Millis time) {
   displayTime(remainingSec);
 }
 
-void updateTimer(Millis time) {
+void updateTimer(Millis time, void (timesUpAction)()) {
   if (remainingSec > 0) {
     Seconds sec = getSec(time - startMillis);
 
@@ -101,6 +103,10 @@ void updateTimer(Millis time) {
       remainingSec -= sec - previousSec;
       displayTime(remainingSec);
       previousSec = sec;
+
+      if (remainingSec == 0) {
+        timesUpAction();
+      }
     }
   }
 }
@@ -158,16 +164,8 @@ boolean isPressed(Key *key) {
   return key->state == PRESSED;
 }
 
-void setup() {
-  display.setBrightness(0x08);
-  initializeKeys();
-  resetTimer(0, millis());
-}
 
-void loop() {
-  Millis time = millis();
-  updateKeyEvents(time);
-
+void processKeyEvents(Millis time) {
   for(int i=0; i<allKeyCount; i++) {
     Key *key = &allKeys[i];
     if (key->event == JUST_PRESSED) {
@@ -184,6 +182,27 @@ void loop() {
       }
     }
   }
+}
 
-  updateTimer(time);
+void strikeBell() {
+  digitalWrite(BELL_PIN, HIGH);
+  delay(100);
+  digitalWrite(BELL_PIN, LOW);
+}
+
+void setup() {
+  display.setBrightness(0x08);
+  initializeKeys();
+  resetTimer(0, millis());
+
+  pinMode(BELL_PIN, OUTPUT);
+  digitalWrite(BELL_PIN, LOW);
+}
+
+void loop() {
+  Millis time = millis();
+  updateKeyEvents(time);
+  processKeyEvents(time);
+
+  updateTimer(time, &strikeBell);
 }
