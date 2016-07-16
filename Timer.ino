@@ -18,16 +18,9 @@ typedef struct {
 } Tick;
 
 Tick allTicks[] = {
-  { 1000,     256 / 2},
-  { 2000,     128 / 2},
-  { 3000,      64 / 2},
-  { 4000,      32 / 2},
-  { 5000,      16 / 2},
-  { 6000,       8 / 2},
-  { 7000,       4 / 2},
-  { 8000,       2 / 2},
-  { 9000,       1 / 2},
-  { ULONG_MAX,  0 / 2},
+  { 1000,      128},
+  { 2000,       64},
+  { ULONG_MAX,  32},
 };
 
 static const int allTickCount = sizeof(allTicks)/sizeof(Tick);
