@@ -6,12 +6,15 @@
 #define ULONG_MAX 4294967295
 TM1637Display display(CLK, DIO);
 
-static const unsigned long DEBOUNCE_DELAY = 10;
-static const unsigned long MAXIMUM_SEC = 99*60 + 59;
+typedef unsigned long Millis;
+typedef unsigned long Seconds;
+
+static const Millis DEBOUNCE_DELAY = 10;
+static const Seconds MAXIMUM_SEC = 99*60 + 59;
 
 typedef struct {
-  unsigned long timeSinceLastPress;
-  unsigned long delay;
+  Millis timeSinceLastPress;
+  Millis delay;
 } Tick;
 
 Tick allTicks[] = {
@@ -29,8 +32,6 @@ Tick allTicks[] = {
 
 static const int allTickCount = sizeof(allTicks)/sizeof(Tick);
 
-typedef unsigned long Millis;
-
 typedef int KeyEvent;
 static const KeyEvent NOTHING_HAPPENED = 0;
 static const KeyEvent JUST_PRESSED     = 1;
@@ -42,12 +43,12 @@ static const KeyState RELEASED = LOW;
 
 typedef struct {
   int pin;
-  unsigned long lastDebounceTime;
+  Millis lastDebounceTime;
   KeyState previousState;
   KeyState state;
   KeyEvent event;
-  unsigned long lastTick;
-  unsigned long lastPressTime;
+  Millis lastTick;
+  Millis lastPressTime;
 } Key;
 
 Key allKeys[] = {
@@ -60,29 +61,29 @@ static const int allKeyCount = sizeof(allKeys)/sizeof(Key);
 Key *upKey = &allKeys[0];
 Key *downKey = &allKeys[1];
 
-unsigned long previousSec;
-unsigned long remainingSec;
-unsigned long startMillis;
+Seconds previousSec;
+Seconds remainingSec;
+Millis startMillis;
 
-unsigned long getSec(unsigned long t) {
+Seconds getSec(Millis t) {
   return t / 1000;
 }
 
-void displayTime(unsigned long sec) {
+void displayTime(Seconds sec) {
   display.showNumberDec(sec / 60, true, 2, 0);
   display.showNumberDec(sec % 60, true, 2, 2);
 }
 
-void resetTimer(unsigned long remaining) {
+void resetTimer(Seconds remaining) {
   startMillis = millis();
   previousSec = 0;
   remainingSec = remaining;
   displayTime(remainingSec);
 }
 
-void updateTimer(unsigned long time) {
+void updateTimer(Millis time) {
   if (remainingSec != 0) {
-    unsigned long sec = getSec(time - startMillis);
+    Seconds sec = getSec(time - startMillis);
 
     if (sec != previousSec) {
       remainingSec -= sec - previousSec;
@@ -132,7 +133,7 @@ void initializeKeys() {
   }
 }
 
-unsigned long findTickDelay(unsigned long timeSinceLastPress) {
+Millis findTickDelay(Millis timeSinceLastPress) {
   for(int i=0; i<allTickCount; i++) {
     Tick *tick = &allTicks[i];
     if (timeSinceLastPress < tick->timeSinceLastPress) {
@@ -141,13 +142,13 @@ unsigned long findTickDelay(unsigned long timeSinceLastPress) {
   }
 }
 
-unsigned long newRemaining(unsigned long remainingSec) {
+Seconds newRemaining(Seconds remainingSec) {
   return remainingSec + 60 - remainingSec % 60;
 }
 
-void makeTick(unsigned long time, unsigned long (*newRemaining)(unsigned long)) {
+void makeTick(Millis time, Seconds (*newRemaining)(Seconds)) {
   upKey->lastTick = time;
-  unsigned long newRemainingSec = newRemaining(remainingSec);
+  Seconds newRemainingSec = newRemaining(remainingSec);
   if (newRemainingSec > MAXIMUM_SEC) {
     newRemainingSec = MAXIMUM_SEC;
   } else if (newRemainingSec < 0) {
@@ -169,14 +170,14 @@ void setup() {
 
 void loop() {
   updateKeyEvents();
-  unsigned long time = millis();
+  Millis time = millis();
 
   if (upKey->event == JUST_PRESSED) {
     upKey->lastPressTime = time;
     makeTick(time, newRemaining);
   } else {
     if (isPressed(upKey)) {
-      unsigned long tickDelay = findTickDelay(time - upKey->lastPressTime);
+      Millis tickDelay = findTickDelay(time - upKey->lastPressTime);
       if (time - upKey->lastTick >= tickDelay) {
         makeTick(time, newRemaining);
       }
